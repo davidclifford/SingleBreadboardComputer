@@ -19,7 +19,7 @@ _target:
 .macend
 
 
-    .advance $FC00, $FF
+    .advance $FE00, $FF
 boot:
     SEI       ; disable interrupts
     CMP $00   ; set output to high
@@ -120,6 +120,8 @@ highestdigitcomputed:
     ; does not damage any zero page data
     ; parameter: A 
 send:
+    PHX
+    PHA
     EOR #$FF ; use inverted bits, so stop-bit matches up
     LDX #10  ; send 10 bits total
     SEC      ; prepare inverted start bit
@@ -146,6 +148,8 @@ setoutputdone:                          ;  11
     DEX                                 ;  82    2
     BNE sendloop                        ;  84    3
                                         ;  87
+    PLA
+    PLX
     RTS
 
 
@@ -189,6 +193,7 @@ receiveburstend:
     ; return:    A = received byte
     ;            X = number of bytes received (1 or 0 in case of timeout)
 receive:
+    PHY
     TAX
     ; wait for low state (start of start bit)
     CLC
@@ -249,6 +254,7 @@ waitforstopbit:
       ; <- possible interrupt
     SEI
     BCS waitforstopbit
+    PLY
     RTS
 
 
