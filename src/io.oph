@@ -1,0 +1,6 @@
+.alias send $FE74
+.alias receive $FEE7
+.alias sendstr $FE18
+.alias receiveburst $FEB3
+.alias sendhex $FE32
+.alias sendnum $FE3C

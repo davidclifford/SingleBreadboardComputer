@@ -1,0 +1,703 @@
+Sections:
+00: "org0001:8000" (8000-8000)
+01: "org0002:fc00" (FC00-FCEE)
+02: "org0003:fe00" (FE00-FF6E)
+03: "org0004:fffa" (FFFA-0)
+
+
+Source: "Examples\wozmon.s"
+                        	     1:     .org     $8000
+                        	     2:     .org     $FC00
+                        	     3: 
+                        	     4: KEYPRESS = $82                 ; Last key pressed
+                        	     5: XAML     = $84                 ; Last "opened" location Low
+                        	     6: XAMH     = $85                 ; Last "opened" location High
+                        	     7: STL      = $86                 ; Store address Low
+                        	     8: STH      = $87                 ; Store address High
+                        	     9: L        = $88                 ; Hex value parsing Low
+                        	    10: H        = $89                 ; Hex value parsing High
+                        	    11: YSAV     = $8A                 ; Used to see if hex value is given
+                        	    12: MODE     = $8B                 ; $00=XAM, $7F=STOR, $AE=BLOCK XAM
+                        	    13: 
+                        	    14: IN       = $200                ; Input buffer
+                        	    15: 
+                        	    16: main:
+                        	    17: OS:
+01:FC00 A91B            	    18:                 LDA     #$1B                    ; Begin with escape.
+                        	    19: 
+                        	    20: NOTCR:
+01:FC02 C908            	    21:                 CMP     #$08                    ; Backspace key?
+01:FC04 F013            	    22:                 BEQ     BACKSPACE               ; Yes.
+01:FC06 C91B            	    23:                 CMP     #$1B                    ; ESC?
+01:FC08 F003            	    24:                 BEQ     ESCAPE                  ; Yes.
+01:FC0A C8              	    25:                 INY                             ; Advance text index.
+01:FC0B 1019            	    26:                 BPL     NEXTCHAR                ; Auto ESC if line longer than 127.
+                        	    27: 
+                        	    28: ESCAPE:
+01:FC0D A92F            	    29:                 LDA     #$2F                    ; "/".
+01:FC0F 2074FE          	    30:                 JSR     send                    ; Output it.
+                        	    31: 
+                        	    32: GETLINE:
+01:FC12 A90A            	    33:                 LDA     #$0A                    ; Send CR
+01:FC14 2074FE          	    34:                 JSR     send
+                        	    35: 
+01:FC17 A001            	    36:                 LDY     #$01                    ; Initialize text index.
+                        	    37: BACKSPACE:
+01:FC19 A920            	    38:                 LDA     #$20
+01:FC1B 2074FE          	    39:                 JSR     send
+01:FC1E A908            	    40:                 LDA     #$08
+01:FC20 2074FE          	    41:                 JSR     send
+01:FC23 88              	    42:                 DEY                             ; Back up text index.
+01:FC24 30EC            	    43:                 BMI     GETLINE                 ; Beyond start of line, reinitialize.
+                        	    44: 
+                        	    45: NEXTCHAR:
+01:FC26 A900            	    46:                 LDA     #$00
+01:FC28 20E7FE          	    47:                 JSR     receive                 ; Get Keypress
+01:FC2B 990002          	    48:                 STA     IN,Y                    ; Add to text buffer.
+01:FC2E 2074FE          	    49:                 JSR     send                    ; Display character.
+01:FC31 C90A            	    50:                 CMP     #$0A                    ; CR?
+01:FC33 D0CD            	    51:                 BNE     NOTCR                   ; No.
+                        	    52: 
+01:FC35 A0FF            	    53:                 LDY     #$FF                    ; Reset text index.
+01:FC37 A900            	    54:                 LDA     #$00                    ; For XAM mode.
+01:FC39 AA              	    55:                 TAX                             ; X=0.
+                        	    56: SETBLOCK:
+01:FC3A 0A              	    57:                 ASL
+                        	    58: SETSTOR:
+01:FC3B 0A              	    59:                 ASL                             ; Leaves $7B if setting STOR mode.
+01:FC3C 858B            	    60:                 STA     MODE                    ; $00 = XAM, $74 = STOR, $B8 = BLOK XAM.
+                        	    61: BLSKIP:
+01:FC3E C8              	    62:                 INY                             ; Advance text index.
+                        	    63: NEXTITEM:
+01:FC3F B90002          	    64:                 LDA     IN,Y                    ; Get character.
+01:FC42 C90A            	    65:                 CMP     #$0A                    ; CR?
+01:FC44 F0CC            	    66:                 BEQ     GETLINE                 ; Yes, done this line.
+01:FC46 C92E            	    67:                 CMP     #$2E                    ; "."?
+01:FC48 90F4            	    68:                 BCC     BLSKIP                  ; Skip delimiter.
+01:FC4A F0EE            	    69:                 BEQ     SETBLOCK                ; Set BLOCK XAM mode.
+01:FC4C C93A            	    70:                 CMP     #$3A                    ; ":"?
+01:FC4E F0EB            	    71:                 BEQ     SETSTOR                 ; Yes, set STOR mode.
+01:FC50 C952            	    72:                 CMP     #$52                    ; "R"?
+01:FC52 F03B            	    73:                 BEQ     RUN                     ; Yes, run user program.
+01:FC54 8688            	    74:                 STX     L                       ; $00 -> L.
+01:FC56 8689            	    75:                 STX     H                       ;    and H.
+01:FC58 848A            	    76:                 STY     YSAV                    ; Save Y for comparison
+                        	    77: 
+                        	    78: NEXTHEX:
+01:FC5A B90002          	    79:                 LDA     IN,Y                    ; Get character for hex test.
+01:FC5D 4930            	    80:                 EOR     #$30                    ; Map digits to $0-9.
+01:FC5F C90A            	    81:                 CMP     #$0A                    ; Digit?
+01:FC61 9006            	    82:                 BCC     DIG                     ; Yes.
+01:FC63 6988            	    83:                 ADC     #$88                    ; Map letter "A"-"F" to $FA-FF.
+01:FC65 C9FA            	    84:                 CMP     #$FA                    ; Hex letter?
+01:FC67 9011            	    85:                 BCC     NOTHEX                  ; No, character not hex.
+                        	    86: DIG:
+01:FC69 0A              	    87:                 ASL
+01:FC6A 0A              	    88:                 ASL                             ; Hex digit to MSD of A.
+01:FC6B 0A              	    89:                 ASL
+01:FC6C 0A              	    90:                 ASL
+                        	    91: 
+01:FC6D A204            	    92:                 LDX     #$04                    ; Shift count.
+                        	    93: HEXSHIFT:
+01:FC6F 0A              	    94:                 ASL                             ; Hex digit left, MSB to carry.
+01:FC70 2688            	    95:                 ROL     L                       ; Rotate into LSD.
+01:FC72 2689            	    96:                 ROL     H                       ; Rotate into MSD's.
+01:FC74 CA              	    97:                 DEX                             ; Done 4 shifts?
+01:FC75 D0F8            	    98:                 BNE     HEXSHIFT                ; No, loop.
+01:FC77 C8              	    99:                 INY                             ; Advance text index.
+01:FC78 D0E0            	   100:                 BNE     NEXTHEX                 ; Always taken. Check next character for hex.
+                        	   101: 
+                        	   102: NOTHEX:
+01:FC7A C48A            	   103:                 CPY     YSAV                    ; Check if L, H empty (no hex digits).
+01:FC7C F08F            	   104:                 BEQ     ESCAPE                  ; Yes, generate ESC sequence.
+                        	   105: 
+01:FC7E 248B            	   106:                 BIT     MODE                    ; Test MODE byte.
+01:FC80 5010            	   107:                 BVC     NOTSTOR                 ; B6=0 is STOR, 1 is XAM and BLOCK XAM.
+                        	   108: 
+01:FC82 A588            	   109:                 LDA     L                       ; LSD's of hex data.
+01:FC84 8186            	   110:                 STA     (STL,X)                 ; Store current 'store index'.
+01:FC86 E686            	   111:                 INC     STL                     ; Increment store index.
+01:FC88 D0B5            	   112:                 BNE     NEXTITEM                ; Get next item (no carry).
+01:FC8A E687            	   113:                 INC     STH                     ; Add carry to 'store index' high order.
+01:FC8C 4C3FFC          	   114: TONEXTITEM:     JMP     NEXTITEM                ; Get next command item.
+                        	   115: 
+                        	   116: RUN:
+01:FC8F 6C8400          	   117:                 JMP     (XAML)                  ; Run at current XAM index.
+                        	   118: 
+                        	   119: NOTSTOR:
+01:FC92 302B            	   120:                 BMI     XAMNEXT                 ; B7 = 0 for XAM, 1 for BLOCK XAM.
+                        	   121: 
+01:FC94 A202            	   122:                 LDX     #$02                    ; Byte count.
+01:FC96 B587            	   123: SETADR:         LDA     L-1,X                   ; Copy hex data to
+01:FC98 9585            	   124:                 STA     STL-1,X                 ;  'store index'.
+01:FC9A 9583            	   125:                 STA     XAML-1,X                ; And to 'XAM index'.
+01:FC9C CA              	   126:                 DEX                             ; Next of 2 bytes.
+01:FC9D D0F7            	   127:                 BNE     SETADR                  ; Loop unless X = 0.
+                        	   128: 
+                        	   129: NXTPRNT:
+01:FC9F D014            	   130:                 BNE     PRDATA                  ; NE means no address to print.
+01:FCA1 A90A            	   131:                 LDA     #$0A                    ; CR.
+01:FCA3 2074FE          	   132:                 JSR     send                    ; Output it.
+01:FCA6 A585            	   133:                 LDA     XAMH                    ; 'Examine index' high-order byte.
+01:FCA8 20D7FC          	   134:                 JSR     PRBYTE                  ; Output it in hex format.
+01:FCAB A584            	   135:                 LDA     XAML                    ; Low-order 'examine index' byte.
+01:FCAD 20D7FC          	   136:                 JSR     PRBYTE                  ; Output it in hex format.
+01:FCB0 A93A            	   137:                 LDA     #$3A                    ; ":".
+01:FCB2 2074FE          	   138:                 JSR     send                    ; Output it.
+                        	   139: 
+                        	   140: PRDATA:
+01:FCB5 A920            	   141:                 LDA     #$20                    ; Blank.
+01:FCB7 2074FE          	   142:                 JSR     send                    ; Output it.
+01:FCBA A184            	   143:                 LDA     (XAML,X)                ; Get data byte at 'examine index'.
+01:FCBC 20D7FC          	   144:                 JSR     PRBYTE                  ; Output it in hex format.
+01:FCBF 868B            	   145: XAMNEXT:        STX     MODE                    ; 0 -> MODE (XAM mode).
+01:FCC1 A584            	   146:                 LDA     XAML
+01:FCC3 C588            	   147:                 CMP     L                       ; Compare 'examine index' to hex data.
+01:FCC5 A585            	   148:                 LDA     XAMH
+01:FCC7 E589            	   149:                 SBC     H
+01:FCC9 B0C1            	   150:                 BCS     TONEXTITEM              ; Not less, so no more data to output.
+                        	   151: 
+01:FCCB E684            	   152:                 INC     XAML
+01:FCCD D002            	   153:                 BNE     MOD8CHK                 ; Increment 'examine index'.
+01:FCCF E685            	   154:                 INC     XAMH
+                        	   155: 
+                        	   156: MOD8CHK:
+01:FCD1 A584            	   157:                 LDA     XAML                    ; Check low-order 'examine index' byte
+01:FCD3 2907            	   158:                 AND     #$07                    ; For MOD 8 = 0
+01:FCD5 10C8            	   159:                 BPL     NXTPRNT                 ; Always taken.
+                        	   160: 
+                        	   161: PRBYTE:
+01:FCD7 48              	   162:                 PHA                             ; Save A for LSD.
+01:FCD8 4A              	   163:                 LSR
+01:FCD9 4A              	   164:                 LSR
+01:FCDA 4A              	   165:                 LSR                             ; MSD to LSD position.
+01:FCDB 4A              	   166:                 LSR
+01:FCDC 20E0FC          	   167:                 JSR     PRHEX                   ; Output hex digit.
+01:FCDF 68              	   168:                 PLA                             ; Restore A.
+                        	   169: 
+                        	   170: PRHEX:
+01:FCE0 290F            	   171:                 AND     #$0F                    ; Mask LSD for hex print.
+01:FCE2 0930            	   172:                 ORA     #$30                    ; Add "0".
+01:FCE4 C93A            	   173:                 CMP     #$3A                    ; Digit?
+01:FCE6 9002            	   174:                 BCC     DIGIT                   ; Yes, output it.
+01:FCE8 6906            	   175:                 ADC     #$06                    ; Add offset for letter.
+                        	   176: DIGIT:
+01:FCEA 2074FE          	   177:                 JSR     send
+01:FCED 60              	   178:                 RTS
+                        	   179: 
+                        	   180:     .include boot.s
+
+Source: "boot.s"
+                        	     1: ; Needs to be included in a user-code program (see examples)
+                        	     2: ; Serial communication is done with 115200 baud @ 10 Mhz CPU speed
+                        	     3: ; (each bit takes 87 clock cycles).
+                        	     4: 
+                        	     5: DELAY2 .macro
+                        	     6:     NOP
+                        	     7: .endmacro
+                        	     8: DELAY5 .macro
+                        	     9:     JMP 1$
+                        	    10: 1$: NOP
+                        	    11: .endmacro
+                        	    12: DELAY10 .macro
+                        	    13:     NOP
+                        	    14:     NOP
+                        	    15:     NOP
+                        	    16:     NOP
+                        	    17:     NOP
+                        	    18: .endmacro
+                        	    19: 
+                        	    20:     .org $FE00
+                        	    21: boot:
+02:FE00 78              	    22:     SEI       ; disable interrupts
+02:FE01 C500            	    23:     CMP $00   ; set output to high
+                        	    24:     ; initial delay to await reset bouncing
+02:FE03 A200            	    25:     LDX #0
+02:FE05 E8              	    26: 1$: INX
+02:FE06 D0FD            	    27:     BNE 1$
+                        	    28:     ; set up stack in case it was damaged
+02:FE08 A2FF            	    29:     LDX #$FF
+02:FE0A 9A              	    30:     TXS
+                        	    31:     ; call user code 
+02:FE0B 2000FC          	    32:     JSR main
+                        	    33:     ; delay
+02:FE0E A200            	    34:     LDX #0
+02:FE10 A000            	    35:     LDY #0
+02:FE12 C8              	    36: 2$: INY
+02:FE13 D0FD            	    37:     BNE 2$
+02:FE15 E8              	    38:     INX 
+02:FE16 D0FA            	    39:     BNE 2$
+02:FE18 4C00FE          	    40:     JMP boot
+                        	    41: 
+                        	    42: 
+                        	    43:     ; send null-terminated string
+                        	    44:     ; parameter: Y,X = address of string (X = high byte)
+                        	    45:     ; overwrite zero page $00,$01
+                        	    46: sendstr:
+                        	    47:     ; pointer
+02:FE1B 8400            	    48:     STY $00
+02:FE1D 8601            	    49:     STX $01
+                        	    50: sendstrloop:
+02:FE1F A000            	    51:     LDY #0
+02:FE21 B100            	    52:     LDA ($00),Y
+02:FE23 F00C            	    53:     BEQ sendstrend
+02:FE25 2074FE          	    54:     JSR send
+02:FE28 E600            	    55:     INC $00
+02:FE2A D0F3            	    56:     BNE sendstrloop
+02:FE2C E601            	    57:     INC $01
+02:FE2E 4C1FFE          	    58:     JMP sendstrloop
+                        	    59: sendstrend:
+02:FE31 60              	    60:     RTS    
+                        	    61: 
+                        	    62:     
+                        	    63:     ; send 2-digit hexadecimal representation of a number
+                        	    64:     ; parameter: A = number
+                        	    65: sendhex:
+02:FE32 A210            	    66:     LDX #16
+02:FE34 2053FE          	    67:     JSR sendhighdigit
+02:FE37 A201            	    68:     LDX #1
+02:FE39 4C53FE          	    69:     JMP sendhighdigit
+                        	    70:   
+                        	    71:   
+                        	    72:     ; send decimal representation of a number
+                        	    73:     ; parameter: A = number
+                        	    74: sendnum:
+02:FE3C C90A            	    75:     CMP #10
+02:FE3E 900E            	    76:     BCC sendnum1digits
+02:FE40 C964            	    77:     CMP #100
+02:FE42 9005            	    78:     BCC sendnum2digits
+02:FE44 A264            	    79:     LDX #100
+02:FE46 2053FE          	    80:     JSR sendhighdigit
+                        	    81: sendnum2digits:
+02:FE49 A20A            	    82:     LDX #10
+02:FE4B 2053FE          	    83:     JSR sendhighdigit
+                        	    84: sendnum1digits:
+02:FE4E A201            	    85:     LDX #1
+02:FE50 4C53FE          	    86:     JMP sendhighdigit
+                        	    87: 
+                        	    88:   
+                        	    89:     ; send highest digit of a number and return the number
+                        	    90:     ; without this digit
+                        	    91:     ; parameter: A = number
+                        	    92:     ;            X = value of one digit (e.g. 100)
+                        	    93:     ; return:    A = number without highest digit
+                        	    94: sendhighdigit:
+02:FE53 A400            	    95:     LDY $00  ; keep temporarily
+02:FE55 8600            	    96:     STX $00
+02:FE57 A230            	    97:     LDX #48  ; ascii '0'
+02:FE59 C500            	    98: 1$: CMP $00
+02:FE5B 9007            	    99:     BCC highestdigitcomputed     ; if A < digit
+02:FE5D 38              	   100:     SEC
+02:FE5E E500            	   101:     SBC $00
+02:FE60 E8              	   102:     INX
+02:FE61 4C59FE          	   103:     JMP 1$
+                        	   104: highestdigitcomputed:
+02:FE64 8400            	   105:     STY $00  ;  repair zero page
+02:FE66 48              	   106:     PHA
+02:FE67 8A              	   107:     TXA
+02:FE68 C93A            	   108:     CMP #58
+02:FE6A 9003            	   109:     BCC 1$          ; if A < 58
+02:FE6C 18              	   110:     CLC
+02:FE6D 6907            	   111:     ADC #7
+02:FE6F 2074FE          	   112: 1$: JSR send
+02:FE72 68              	   113:     PLA
+02:FE73 60              	   114:     RTS
+                        	   115:     
+                        	   116:     
+                        	   117:     ; send one byte via serial 
+                        	   118:     ; does not damage any zero page data
+                        	   119:     ; parameter: A 
+                        	   120: send:
+02:FE74 DA              	   121:     PHX
+02:FE75 48              	   122:     PHA
+02:FE76 49FF            	   123:     EOR #$FF ; use inverted bits, so stop-bit matches up
+02:FE78 A20A            	   124:     LDX #10  ; send 10 bits total
+02:FE7A 38              	   125:     SEC      ; prepare inverted start bit
+                        	   126: sendloop:                               ;  total cycles
+02:FE7B 9006            	   127:     BCC setoutputhigh                   ;  0     2/3
+                        	   128: setoutputlow:                           ;
+02:FE7D EE0080          	   129:     INC $8000  ; multibyte-operation    ;  2     6
+02:FE80 4C88FE          	   130:     JMP setoutputdone                   ;  8     3
+                        	   131: setoutputhigh:
+02:FE83 C500            	   132:     CMP $00    ; any access to RAM      ;  3     3
+02:FE85 C500            	   133:     CMP $00                             ;  6     3
+                        	   134:     DELAY2                             ;  9     2
+02:FE87 EA              	     1M     NOP
+                        	   135: setoutputdone:                          ;  11
+                        	   136:     DELAY10                            ;  11    10
+02:FE88 EA              	     1M     NOP
+02:FE89 EA              	     2M     NOP
+02:FE8A EA              	     3M     NOP
+02:FE8B EA              	     4M     NOP
+02:FE8C EA              	     5M     NOP
+                        	   137:     DELAY10                            ;  21    10
+02:FE8D EA              	     1M     NOP
+02:FE8E EA              	     2M     NOP
+02:FE8F EA              	     3M     NOP
+02:FE90 EA              	     4M     NOP
+02:FE91 EA              	     5M     NOP
+                        	   138:     DELAY10                            ;  31    10
+02:FE92 EA              	     1M     NOP
+02:FE93 EA              	     2M     NOP
+02:FE94 EA              	     3M     NOP
+02:FE95 EA              	     4M     NOP
+02:FE96 EA              	     5M     NOP
+                        	   139:     DELAY10                            ;  41    10
+02:FE97 EA              	     1M     NOP
+02:FE98 EA              	     2M     NOP
+02:FE99 EA              	     3M     NOP
+02:FE9A EA              	     4M     NOP
+02:FE9B EA              	     5M     NOP
+                        	   140:     DELAY10                            ;  51    10
+02:FE9C EA              	     1M     NOP
+02:FE9D EA              	     2M     NOP
+02:FE9E EA              	     3M     NOP
+02:FE9F EA              	     4M     NOP
+02:FEA0 EA              	     5M     NOP
+                        	   141:     DELAY10                            ;  61    10
+02:FEA1 EA              	     1M     NOP
+02:FEA2 EA              	     2M     NOP
+02:FEA3 EA              	     3M     NOP
+02:FEA4 EA              	     4M     NOP
+02:FEA5 EA              	     5M     NOP
+                        	   142:     DELAY5                             ;  71    5
+02:FEA6 4CA9FE          	     1M     JMP 1$
+02:FEA9 EA              	     2M 1$: NOP
+                        	   143:     DELAY2                             ;  76    2
+02:FEAA EA              	     1M     NOP
+                        	   144:     DELAY2                             ;  78    2
+02:FEAB EA              	     1M     NOP
+02:FEAC 4A              	   145:     LSR  ; next bit (when empty, 0)     ;  80    2
+02:FEAD CA              	   146:     DEX                                 ;  82    2
+02:FEAE D0CB            	   147:     BNE sendloop                        ;  84    3
+                        	   148:                                         ;  87
+02:FEB0 68              	   149:     PLA
+02:FEB1 FA              	   150:     PLX
+02:FEB2 60              	   151:     RTS
+                        	   152: 
+                        	   153: 
+                        	   154:     ; receive a burst of serial data.
+                        	   155:     ; parameter: Y,X = address of buffer (X = high byte)
+                        	   156:     ;            A = length of buffer
+                        	   157:     ; return A = number of bytes received
+                        	   158:     ; overwrite zero page $00 - $03
+                        	   159: receiveburst:
+02:FEB3 8400            	   160:     STY $00  ; buffer address lo
+02:FEB5 8601            	   161:     STX $01  ; buffer address high
+02:FEB7 8502            	   162:     STA $02  ; buffer size
+02:FEB9 A900            	   163:     LDA #0
+02:FEBB 8503            	   164:     STA $03  ; bytes received
+02:FEBD C502            	   165:     CMP $02
+02:FEBF F023            	   166:     BEQ receiveburstend  ; buffer full?
+02:FEC1 A900            	   167:     LDA #0   ; wait indefinitely for 1. byte
+02:FEC3 20E7FE          	   168:     JSR receive
+02:FEC6 A000            	   169:     LDY #0
+02:FEC8 9100            	   170:     STA ($00),Y
+02:FECA E603            	   171:     INC $03
+                        	   172: continuereceiveburst:
+02:FECC A503            	   173:     LDA $03
+02:FECE C502            	   174:     CMP $02
+02:FED0 F012            	   175:     BEQ receiveburstend
+02:FED2 A964            	   176:     LDA #100 ; wait some time to see if burst continues
+02:FED4 20E7FE          	   177:     JSR receive
+02:FED7 E000            	   178:     CPX #0
+02:FED9 F009            	   179:     BEQ receiveburstend
+02:FEDB A403            	   180:     LDY $03
+02:FEDD 9100            	   181:     STA ($00),Y
+02:FEDF E603            	   182:     INC $03
+02:FEE1 4CCCFE          	   183:     JMP continuereceiveburst
+                        	   184: receiveburstend:
+02:FEE4 A503            	   185:     LDA $03
+02:FEE6 60              	   186:     RTS
+                        	   187: 
+                        	   188: 
+                        	   189:     ; receive serial data.
+                        	   190:     ; parameter: A = time to wait for data (when 0: indefinite)
+                        	   191:     ; return:    A = received byte
+                        	   192:     ;            X = number of bytes received (1 or 0 in case of timeout)
+                        	   193: receive:
+02:FEE7 5A              	   194:     PHY
+02:FEE8 AA              	   195:     TAX
+                        	   196:     ; wait for low state (start of start bit)
+02:FEE9 18              	   197:     CLC
+02:FEEA 58              	   198:     CLI
+                        	   199: waitforstartbit:
+02:FEEB B014            	   200:     BCS startbitfound
+02:FEED 8A              	   201:     TXA
+02:FEEE B011            	   202:     BCS startbitfound
+02:FEF0 F0F9            	   203:     BEQ waitforstartbit
+02:FEF2 B00D            	   204:     BCS startbitfound
+02:FEF4 CA              	   205:     DEX
+02:FEF5 B00A            	   206:     BCS startbitfound
+02:FEF7 D0F2            	   207:     BNE waitforstartbit
+02:FEF9 B006            	   208:     BCS startbitfound
+02:FEFB 78              	   209:     SEI
+02:FEFC B003            	   210:     BCS startbitfound
+02:FEFE A200            	   211:     LDX #0
+02:FF00 60              	   212:     RTS
+                        	   213: startbitfound:                  ; approx. 30 after edge
+02:FF01 78              	   214:     SEI                         ; 30    2
+02:FF02 A900            	   215:     LDA #0  ; buffer            ; 32    3
+02:FF04 A208            	   216:     LDX #8  ; bit counter       ; 35    3
+                        	   217:     DELAY10                    ; 38    10
+02:FF06 EA              	     1M     NOP
+02:FF07 EA              	     2M     NOP
+02:FF08 EA              	     3M     NOP
+02:FF09 EA              	     4M     NOP
+02:FF0A EA              	     5M     NOP
+                        	   218:     DELAY10                    ; 48    10
+02:FF0B EA              	     1M     NOP
+02:FF0C EA              	     2M     NOP
+02:FF0D EA              	     3M     NOP
+02:FF0E EA              	     4M     NOP
+02:FF0F EA              	     5M     NOP
+                        	   219:     DELAY10                    ; 58    10
+02:FF10 EA              	     1M     NOP
+02:FF11 EA              	     2M     NOP
+02:FF12 EA              	     3M     NOP
+02:FF13 EA              	     4M     NOP
+02:FF14 EA              	     5M     NOP
+                        	   220:     DELAY10                    ; 68    10
+02:FF15 EA              	     1M     NOP
+02:FF16 EA              	     2M     NOP
+02:FF17 EA              	     3M     NOP
+02:FF18 EA              	     4M     NOP
+02:FF19 EA              	     5M     NOP
+                        	   221:     DELAY10                    ; 78    10
+02:FF1A EA              	     1M     NOP
+02:FF1B EA              	     2M     NOP
+02:FF1C EA              	     3M     NOP
+02:FF1D EA              	     4M     NOP
+02:FF1E EA              	     5M     NOP
+                        	   222:     DELAY10                    ; 88    10
+02:FF1F EA              	     1M     NOP
+02:FF20 EA              	     2M     NOP
+02:FF21 EA              	     3M     NOP
+02:FF22 EA              	     4M     NOP
+02:FF23 EA              	     5M     NOP
+                        	   223:     DELAY10                    ; 98    10
+02:FF24 EA              	     1M     NOP
+02:FF25 EA              	     2M     NOP
+02:FF26 EA              	     3M     NOP
+02:FF27 EA              	     4M     NOP
+02:FF28 EA              	     5M     NOP
+                        	   224:     DELAY10                    ; 108   10
+02:FF29 EA              	     1M     NOP
+02:FF2A EA              	     2M     NOP
+02:FF2B EA              	     3M     NOP
+02:FF2C EA              	     4M     NOP
+02:FF2D EA              	     5M     NOP
+                        	   225:        ; <- middle of 1. bit    ; 118     
+                        	   226: bitreceiveloop:                 ; 
+02:FF2E 18              	   227:     CLC                         ; 0     2
+02:FF2F 58              	   228:     CLI                         ; 2     2
+                        	   229:       ; <- possible interrupt     4     0/26
+02:FF30 78              	   230:     SEI                         ; 4/30  2
+02:FF31 B00F            	   231:     BCS 3$                      ; 6/32  2/3
+                        	   232:     DELAY10                    ; 8     10
+02:FF33 EA              	     1M     NOP
+02:FF34 EA              	     2M     NOP
+02:FF35 EA              	     3M     NOP
+02:FF36 EA              	     4M     NOP
+02:FF37 EA              	     5M     NOP
+                        	   233:     DELAY10                    ; 18    10
+02:FF38 EA              	     1M     NOP
+02:FF39 EA              	     2M     NOP
+02:FF3A EA              	     3M     NOP
+02:FF3B EA              	     4M     NOP
+02:FF3C EA              	     5M     NOP
+                        	   234:     DELAY5                     ; 28    5
+02:FF3D 4C40FF          	     1M     JMP 1$
+02:FF40 EA              	     2M 1$: NOP
+                        	   235:     DELAY2                     ; 33    2
+02:FF41 EA              	     1M     NOP
+02:FF42 6A              	   236: 3$: ROR                         ; 35    2
+                        	   237:     DELAY10                    ; 37    10
+02:FF43 EA              	     1M     NOP
+02:FF44 EA              	     2M     NOP
+02:FF45 EA              	     3M     NOP
+02:FF46 EA              	     4M     NOP
+02:FF47 EA              	     5M     NOP
+                        	   238:     DELAY10                    ; 47    10
+02:FF48 EA              	     1M     NOP
+02:FF49 EA              	     2M     NOP
+02:FF4A EA              	     3M     NOP
+02:FF4B EA              	     4M     NOP
+02:FF4C EA              	     5M     NOP
+                        	   239:     DELAY10                    ; 57    10
+02:FF4D EA              	     1M     NOP
+02:FF4E EA              	     2M     NOP
+02:FF4F EA              	     3M     NOP
+02:FF50 EA              	     4M     NOP
+02:FF51 EA              	     5M     NOP
+                        	   240:     DELAY10                    ; 67    10
+02:FF52 EA              	     1M     NOP
+02:FF53 EA              	     2M     NOP
+02:FF54 EA              	     3M     NOP
+02:FF55 EA              	     4M     NOP
+02:FF56 EA              	     5M     NOP
+                        	   241:     DELAY2                     ; 77    2
+02:FF57 EA              	     1M     NOP
+                        	   242:     DELAY2                     ; 79    2
+02:FF58 EA              	     1M     NOP
+02:FF59 CA              	   243:     DEX                         ; 81    2
+02:FF5A D0D2            	   244:     BNE bitreceiveloop          ; 83    3/2
+                        	   245:                                 ; 86  ???
+                        	   246:     ; revert input bits
+02:FF5C 49FF            	   247:     EOR #$FF   
+02:FF5E A201            	   248:     LDX #1
+                        	   249: waitforstopbit:
+02:FF60 18              	   250:     CLC
+02:FF61 58              	   251:     CLI
+                        	   252:       ; <- possible interrupt
+02:FF62 78              	   253:     SEI
+02:FF63 B0FB            	   254:     BCS waitforstopbit
+02:FF65 7A              	   255:     PLY
+02:FF66 60              	   256:     RTS
+                        	   257: 
+                        	   258: 
+                        	   259:     ; Interrupt handler to trigger when the IRQB pin is low. 
+                        	   260:     ; It will just set the C flag (and overwrite the Y register). 
+                        	   261:     ; Also it will disable interrupts upon exit.
+                        	   262:     ; Other flags remain unchanged
+                        	   263: irqhandler:                     ;       
+02:FF67 A8              	   264:     TAY                         ; 7     2
+02:FF68 68              	   265:     PLA                         ; 9     4
+02:FF69 0905            	   266:     ORA #$05                    ; 13    2
+02:FF6B 48              	   267:     PHA                         ; 15    3
+02:FF6C 98              	   268:     TYA                         ; 18    2
+02:FF6D 40              	   269:     RTI                         ; 20    6
+                        	   270:                                 ; 26
+                        	   271: 
+                        	   272:     ; vector table
+                        	   273:     .org $FFFA
+03:FFFA 00FE            	   274:     .word boot       ; NMIB
+03:FFFC 00FE            	   275:     .word boot       ; RESB
+03:FFFE 67FF            	   276:     .word irqhandler ; BRK/IRQB
+                        	   277: 
+
+Source: "Examples\wozmon.s"
+                        	   181: 
+
+
+Symbols by name:
+BACKSPACE                        A:FC19
+BLSKIP                           A:FC3E
+DIG                              A:FC69
+DIGIT                            A:FCEA
+ESCAPE                           A:FC0D
+GETLINE                          A:FC12
+H                                E:0089
+HEXSHIFT                         A:FC6F
+IN                               E:0200
+L                                E:0088
+MOD8CHK                          A:FCD1
+MODE                             E:008B
+NEXTCHAR                         A:FC26
+NEXTHEX                          A:FC5A
+NEXTITEM                         A:FC3F
+NOTCR                            A:FC02
+NOTHEX                           A:FC7A
+NOTSTOR                          A:FC92
+NXTPRNT                          A:FC9F
+OS                               A:FC00
+PRBYTE                           A:FCD7
+PRDATA                           A:FCB5
+PRHEX                            A:FCE0
+RUN                              A:FC8F
+SETADR                           A:FC96
+SETBLOCK                         A:FC3A
+SETSTOR                          A:FC3B
+STH                              E:0087
+STL                              E:0086
+TONEXTITEM                       A:FC8C
+XAMH                             E:0085
+XAML                             E:0084
+XAMNEXT                          A:FCBF
+YSAV                             E:008A
+bitreceiveloop                   A:FF2E
+boot                             A:FE00
+continuereceiveburst             A:FECC
+highestdigitcomputed             A:FE64
+irqhandler                       A:FF67
+main                             A:FC00
+receive                          A:FEE7
+receiveburst                     A:FEB3
+receiveburstend                  A:FEE4
+send                             A:FE74
+sendhex                          A:FE32
+sendhighdigit                    A:FE53
+sendloop                         A:FE7B
+sendnum                          A:FE3C
+sendnum1digits                   A:FE4E
+sendnum2digits                   A:FE49
+sendstr                          A:FE1B
+sendstrend                       A:FE31
+sendstrloop                      A:FE1F
+setoutputdone                    A:FE88
+setoutputhigh                    A:FE83
+setoutputlow                     A:FE7D
+startbitfound                    A:FF01
+waitforstartbit                  A:FEEB
+waitforstopbit                   A:FF60
+
+Symbols by value:
+0084 XAML
+0085 XAMH
+0086 STL
+0087 STH
+0088 L
+0089 H
+008A YSAV
+008B MODE
+0200 IN
+FC00 main
+FC00 OS
+FC02 NOTCR
+FC0D ESCAPE
+FC12 GETLINE
+FC19 BACKSPACE
+FC26 NEXTCHAR
+FC3A SETBLOCK
+FC3B SETSTOR
+FC3E BLSKIP
+FC3F NEXTITEM
+FC5A NEXTHEX
+FC69 DIG
+FC6F HEXSHIFT
+FC7A NOTHEX
+FC8C TONEXTITEM
+FC8F RUN
+FC92 NOTSTOR
+FC96 SETADR
+FC9F NXTPRNT
+FCB5 PRDATA
+FCBF XAMNEXT
+FCD1 MOD8CHK
+FCD7 PRBYTE
+FCE0 PRHEX
+FCEA DIGIT
+FE00 boot
+FE1B sendstr
+FE1F sendstrloop
+FE31 sendstrend
+FE32 sendhex
+FE3C sendnum
+FE49 sendnum2digits
+FE4E sendnum1digits
+FE53 sendhighdigit
+FE64 highestdigitcomputed
+FE74 send
+FE7B sendloop
+FE7D setoutputlow
+FE83 setoutputhigh
+FE88 setoutputdone
+FEB3 receiveburst
+FECC continuereceiveburst
+FEE4 receiveburstend
+FEE7 receive
+FEEB waitforstartbit
+FF01 startbitfound
+FF2E bitreceiveloop
+FF60 waitforstopbit
+FF67 irqhandler

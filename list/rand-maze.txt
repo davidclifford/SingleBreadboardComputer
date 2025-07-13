@@ -1,0 +1,65 @@
+Sections:
+00: "org0001:1000" (1000-1039)
+
+
+Source: "Examples\rand-maze.s"
+                        	     1:         .org $1000
+                        	     2: 
+00:1000 A90A            	     3:         LDA     #10
+00:1002 2074FD          	     4:         JSR     IO_ECHO
+                        	     5: LOOP:
+00:1005 201B10          	     6:         JSR     RAND
+00:1008 AD3810          	     7:         LDA     XSHFT+1
+00:100B 3007            	     8:         BMI     BS
+00:100D A92F            	     9:         LDA     #'/'
+00:100F 2074FD          	    10:         JSR     IO_ECHO
+00:1012 80F1            	    11:         BRA     LOOP
+                        	    12: BS:
+00:1014 A95C            	    13:         LDA     #'\'
+00:1016 2074FD          	    14:         JSR     IO_ECHO
+00:1019 80EA            	    15:         BRA     LOOP
+                        	    16: 
+                        	    17: RAND:
+00:101B AD3810          	    18:         LDA     XSHFT+1
+00:101E 6A              	    19:         ROR
+00:101F AD3710          	    20:         LDA     XSHFT
+00:1022 6A              	    21:         ROR
+00:1023 4D3810          	    22:         EOR     XSHFT+1
+00:1026 8D3810          	    23:         STA     XSHFT+1
+00:1029 6A              	    24:         ROR
+00:102A 4D3710          	    25:         EOR     XSHFT
+00:102D 8D3710          	    26:         STA     XSHFT
+00:1030 4D3810          	    27:         EOR     XSHFT+1
+00:1033 8D3810          	    28:         STA     XSHFT+1
+00:1036 60              	    29:         RTS
+                        	    30: 
+00:1037 3412            	    31: XSHFT:  DW     $1234
+                        	    32: 
+                        	    33:         .include    "io.s"
+
+Source: "io.s"
+                        	     1: IO_ECHO = $FD74
+                        	     2: receive = $FDE7
+                        	     3: sendstr = $FE18
+                        	     4: receiveburst = $FEB3
+                        	     5: sendhex = $FE32
+                        	     6: sendnum = $FE3C
+                        	     7: 
+
+Source: "Examples\rand-maze.s"
+                        	    34: 
+
+
+Symbols by name:
+BS                               A:1014
+IO_ECHO                          E:FD74
+LOOP                             A:1005
+RAND                             A:101B
+XSHFT                            A:1037
+
+Symbols by value:
+1005 LOOP
+1014 BS
+101B RAND
+1037 XSHFT
+FD74 IO_ECHO
